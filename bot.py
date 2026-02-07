@@ -8,38 +8,52 @@ TOKEN = os.getenv("TELEGRAM_TOKEN")
 GEMINI_KEY = os.getenv("GEMINI_API_KEY")
 
 genai.configure(api_key=GEMINI_KEY)
+# Using 2.5 flash for the best instruction following
 model = genai.GenerativeModel("gemini-2.5-flash-preview-09-2025")
 
 bot = telebot.TeleBot(TOKEN, threaded=False)
 app = Flask(__name__)
-server = app # This ensures Render finds it whether it looks for 'app' or 'server'
+server = app 
 
-# 2. THE CLEAN TEXT EGCSE BRAIN
+# 2. THE TELEGRAM-OPTIMIZED BRAIN
 SYSTEM_INSTRUCTION = (
-    "You are the 'Ejubukweni High School AI Tutor'. Expert in EGCSE Eswatini Biology and Physical Science.\n\n"
-    "CRITICAL FORMATTING RULE FOR TELEGRAM:\n"
-    "- NEVER use LaTeX, $, or backslashes (\\) for math.\n"
-    "- Use 'degrees C' instead of the degree symbol with code.\n"
-    "- Use '/' for fractions and '^' for powers.\n"
-    "- Use simple text labels like 'Formula:' instead of complex math blocks.\n"
-    "- Ensure every response is easy to read on a small mobile screen.\n\n"
-    "STRUCTURE:\n"
-    "1. QUICK NOTES: Clear, bullet-pointed notes.\n"
-    "2. EXAM STYLE QUIZ: Offer P1 (Recall), P2 (Theory/Calculation), or P4 (Practical)."
+    "You are the 'Ejubukweni High School AI Tutor'.\n\n"
+    "TELEGRAM FORMATTING RULES:\n"
+    "- Use **BOLD TEXT** for all main headings and subheadings.\n"
+    "- NEVER use # or ### for headers.\n"
+    "- For Chemical formulas: Use simple text like CO2, H2O, or C6H12O6 (No special code).\n"
+    "- For Math: Use 'x' for multiply, '/' for divide, and '^' for powers (e.g., 10^2).\n"
+    "- Keep paragraphs short and use bullet points (•) for lists.\n\n"
+    "SUBJECT RULES:\n"
+    "- If the user asks for 'Biology' or uses /biology, stay strictly on EGCSE Biology.\n"
+    "- If the user asks for 'Science' or uses /science, stay strictly on EGCSE Physical Science (Physics/Chemistry).\n"
+    "- Always offer a quick 'Check your understanding' question at the end."
 )
 
 @bot.message_handler(commands=['start', 'help'])
 def send_welcome(message):
-    bot.reply_to(message, "Sawubona! I am the Ejubukweni High AI Study Buddy. 📚\n\n"
-                         "I'm updated with cleaner text for Science and Math. What topic are we revising?")
+    bot.reply_to(message, "**Sawubona!** I am your Ejubukweni High Study Buddy. 📚\n\n"
+                         "Use the menu or type a topic to start. I'm now optimized for clear reading!")
+
+@bot.message_handler(commands=['biology'])
+def bio_command(message):
+    response = model.generate_content(f"{SYSTEM_INSTRUCTION}\n\nStudent wants BIOLOGY notes. Give an overview of the syllabus or ask for a topic.")
+    bot.reply_to(message, response.text, parse_mode='Markdown')
+
+@bot.message_handler(commands=['science'])
+def science_command(message):
+    response = model.generate_content(f"{SYSTEM_INSTRUCTION}\n\nStudent wants PHYSICAL SCIENCE notes. Give an overview of the syllabus or ask for a topic.")
+    bot.reply_to(message, response.text, parse_mode='Markdown')
 
 @bot.message_handler(func=lambda message: True)
 def handle_message(message):
     try:
         response = model.generate_content(f"{SYSTEM_INSTRUCTION}\n\nStudent: {message.text}")
+        # We use parse_mode='Markdown' so that **Bold** actually works!
+        bot.reply_to(message, response.text, parse_mode='Markdown')
+    except Exception:
+        # Fallback if Markdown fails (sometimes AI sends bad characters)
         bot.reply_to(message, response.text)
-    except Exception as e:
-        bot.reply_to(message, "I'm taking a quick study break. Please try again!")
 
 @app.route('/' + TOKEN, methods=['POST'])
 def getMessage():
@@ -50,7 +64,7 @@ def getMessage():
 
 @app.route("/")
 def index():
-    return "<h1>Ejubukweni High Bot is Online and Clean!</h1>", 200
+    return "<h1>Ejubukweni Bot: Formatting Updated!</h1>", 200
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get('PORT', 5000)))
