@@ -3,55 +3,47 @@ import telebot
 import google.generativeai as genai
 from flask import Flask, request
 
-# 1. API CONFIGURATION
+# 1. SETUP
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 GEMINI_KEY = os.getenv("GEMINI_API_KEY")
 
-# Configure the Gemini AI
 genai.configure(api_key=GEMINI_KEY)
-# Using the latest Gemini 3 model for best performance in 2026
-model = genai.GenerativeModel("gemini-3-flash-preview")
+# Using the latest stable flash model for speed on mobile
+model = genai.GenerativeModel("gemini-2.5-flash-preview-09-2025")
 
-# Initialize the Bot and the Web Server
 bot = telebot.TeleBot(TOKEN, threaded=False)
-app = Flask(__name__)
+app = Flask(__name__) # This MUST be named 'app' for Render/Gunicorn
 
-# 2. THE MASTER EGCSE SYSTEM PROMPT
+# 2. THE EGCSE ESWATINI BRAIN
 SYSTEM_INSTRUCTION = (
-    "You are the 'Ejubukweni High EGCSE Study Buddy'. You are an expert tutor for "
-    "Eswatini Biology (6884) and Physical Science (6888) syllabi for Form 4 and 5.\n\n"
+    "You are the 'Ejubukweni High School AI Tutor'. You are an expert in the "
+    "EGCSE Eswatini (ECESWA) syllabi for Biology (6884) and Physical Science (6888).\n\n"
     "When a student asks for a topic, follow this structure:\n"
-    "1. BRIEF NOTES: Provide clear, point-form notes on the topic.\n"
-    "2. EXAM STYLE QUIZ: Ask the student if they want questions from P1, P2, or P4.\n\n"
-    "STRICT EXAM FORMATS:\n"
-    "- P1: Short, 1-mark recall or multiple-choice questions.\n"
-    "- P2: Structured questions with parts (a) and (b). Include science calculations.\n"
-    "- P4: Alternative to Practical. Describe an experiment (like food tests or density measurements) "
-    "and ask about variables, observations, or safety precautions.\n\n"
-    "TONE: Use SI units, be encouraging, and use local Eswatini examples where possible."
+    "1. QUICK NOTES: Provide clear, bullet-pointed notes suitable for Form 4/5.\n"
+    "2. EXAM STYLE QUIZ: Offer to test them with a question from:\n"
+    "   - Paper 1 (P1): Multiple choice / Short recall.\n"
+    "   - Paper 2 (P2): Structured theory (Include $formulas$ if Science).\n"
+    "   - Paper 4 (P4): Alternative to Practical (Lab procedures/safety).\n\n"
+    "TONE: Professional but encouraging. Use SI units and local examples."
 )
 
 # 3. BOT HANDLERS
 @bot.message_handler(commands=['start', 'help'])
 def send_welcome(message):
-    welcome_msg = (
-        "Sawubona! I am the Ejubukweni High AI Study Buddy. 📚\n\n"
-        "I'm ready for Biology, Physical Science, or Math.\n"
-        "What topic are we revising today?"
-    )
-    bot.reply_to(message, welcome_msg)
+    bot.reply_to(message, "Sawubona! I am the Ejubukweni High AI Study Buddy. 📚\n\n"
+                         "I'm ready for Biology or Physical Science. What topic are we revising today?")
 
 @bot.message_handler(func=lambda message: True)
 def handle_message(message):
     try:
-        prompt = f"{SYSTEM_INSTRUCTION}\n\nStudent asks: {message.text}"
-        response = model.generate_content(prompt)
+        # Generate content from Gemini
+        response = model.generate_content(f"{SYSTEM_INSTRUCTION}\n\nStudent: {message.text}")
         bot.reply_to(message, response.text)
     except Exception as e:
         print(f"Error: {e}")
-        bot.reply_to(message, "I'm having a quick brain-break. Please try again in a moment!")
+        bot.reply_to(message, "I'm having a quick study break. Please try again in a moment!")
 
-# 4. SERVER & WEBHOOK LOGIC
+# 4. SERVER ROUTES (The Handshake)
 @app.route('/' + TOKEN, methods=['POST'])
 def getMessage():
     json_string = request.get_data().decode('utf-8')
@@ -60,8 +52,9 @@ def getMessage():
     return "ok", 200
 
 @app.route("/")
-def webhook():
-    return "<h1>Ejubukweni Bot is Running!</h1>", 200
+def index():
+    # If you visit the Render URL in a browser, you should see this
+    return "<h1>Ejubukweni High Bot is Online!</h1>", 200
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get('PORT', 5000)))
