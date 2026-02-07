@@ -1,1 +1,4 @@
-
+​pyTelegramBotAPI
+google-generativeai
+flask
+gunicorn
