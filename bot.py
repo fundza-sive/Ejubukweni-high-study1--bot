@@ -2,62 +2,69 @@ import os
 import telebot
 import google.generativeai as genai
 from flask import Flask, request
-import traceback
+import time
 
 # 1. SETUP
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 GEMINI_KEY = os.getenv("GEMINI_API_KEY")
 
-# Safety check for Environment Variables
-if not TOKEN or not GEMINI_KEY:
-    print("CRITICAL ERROR: Environment variables (TELEGRAM_TOKEN or GEMINI_API_KEY) are missing!")
-
 genai.configure(api_key=GEMINI_KEY)
-model = genai.GenerativeModel("gemini-1.5-flash")
+
+# Using the full model path to fix the 404 error you saw in the logs
+MODEL_NAME = "models/gemini-1.5-flash-latest" 
+model = genai.GenerativeModel(MODEL_NAME)
 
 bot = telebot.TeleBot(TOKEN, threaded=False)
 app = Flask(__name__)
 
 SYSTEM_INSTRUCTION = (
     "You are the 'Ejubukweni High School AI Tutor'.\n"
-    "Use **BOLD** for headers and be helpful for EGCSE students."
+    "Help students with EGCSE Biology and Physical Science.\n"
+    "Use **BOLD** for headings and bullet points for lists."
 )
 
-@bot.message_handler(commands=['start'])
+def generate_with_retry(prompt, retries=5):
+    """Exponential backoff for API calls"""
+    for i in range(retries):
+        try:
+            return model.generate_content(prompt)
+        except Exception as e:
+            if i == retries - 1: raise e
+            time.sleep(2**i) # Wait 1s, 2s, 4s...
+
+@bot.message_handler(commands=['start', 'help'])
 def send_welcome(message):
-    try:
-        bot.reply_to(message, "**Sawubona!** I am awake and ready. How can I help you study today?", parse_mode='Markdown')
-    except Exception as e:
-        print(f"Error in start command: {e}")
+    bot.reply_to(message, "**Sawubona!** I am your Ejubukweni High Study Buddy. 📚\n\n"
+                         "How can I help you with Biology or Science today?", parse_mode='Markdown')
 
 @bot.message_handler(func=lambda message: True)
-def handle_all_messages(message):
+def handle_message(message):
     try:
-        print(f"Received message: {message.text}") # This will show in Render Logs
-        response = model.generate_content(f"{SYSTEM_INSTRUCTION}\n\nStudent: {message.text}")
-        bot.reply_to(message, response.text, parse_mode='Markdown')
+        # Show 'typing' status in Telegram
+        bot.send_chat_action(message.chat.id, 'typing')
+        
+        response = generate_with_retry(f"{SYSTEM_INSTRUCTION}\n\nStudent: {message.text}")
+        
+        # Check if response has text
+        if response and response.text:
+            bot.reply_to(message, response.text, parse_mode='Markdown')
+        else:
+            bot.reply_to(message, "I understood you, but I couldn't generate a text response. Please try again.")
+            
     except Exception as e:
-        print(f"Error handling message: {traceback.format_exc()}")
-        # Fallback to plain text if Markdown fails
-        try:
-            bot.reply_to(message, "I encountered an error. Let me try answering without formatting:\n\n" + response.text)
-        except:
-            bot.reply_to(message, "Sorry, I'm having trouble connecting to my AI brain right now.")
+        print(f"Error: {e}")
+        bot.reply_to(message, "I'm having a small brain-freeze. Please try asking again in a moment!")
 
 @app.route('/' + TOKEN, methods=['POST'])
 def getMessage():
-    try:
-        json_string = request.get_data().decode('utf-8')
-        update = telebot.types.Update.de_json(json_string)
-        bot.process_new_updates([update])
-        return "ok", 200
-    except Exception as e:
-        print(f"Webhook Error: {e}")
-        return "error", 500
+    json_string = request.get_data().decode('utf-8')
+    update = telebot.types.Update.de_json(json_string)
+    bot.process_new_updates([update])
+    return "ok", 200
 
 @app.route("/")
 def index():
-    return f"<h1>Ejubukweni Bot Status: Online</h1><p>Token: {TOKEN[:5]}***</p>", 200
+    return "<h1>Ejubukweni Bot: System Patched</h1>", 200
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get('PORT', 5000)))
