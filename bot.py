@@ -8,51 +8,61 @@ TOKEN = os.getenv("TELEGRAM_TOKEN")
 GEMINI_KEY = os.getenv("GEMINI_API_KEY")
 
 genai.configure(api_key=GEMINI_KEY)
-# Using 2.5 flash for the best instruction following
-model = genai.GenerativeModel("gemini-2.5-flash-preview-09-2025")
+# Using 1.5-flash for maximum stability and speed
+model = genai.GenerativeModel("gemini-1.5-flash")
 
 bot = telebot.TeleBot(TOKEN, threaded=False)
 app = Flask(__name__)
-server = app 
 
-# 2. THE TELEGRAM-OPTIMIZED BRAIN
+# 2. THE TUTOR'S PERSONALITY
 SYSTEM_INSTRUCTION = (
-    "You are the 'Ejubukweni High School AI Tutor'.\n\n"
-    "TELEGRAM FORMATTING RULES:\n"
-    "- Use **BOLD TEXT** for all main headings and subheadings.\n"
-    "- NEVER use # or ### for headers.\n"
-    "- For Chemical formulas: Use simple text like CO2, H2O, or C6H12O6 (No special code).\n"
-    "- For Math: Use 'x' for multiply, '/' for divide, and '^' for powers (e.g., 10^2).\n"
-    "- Keep paragraphs short and use bullet points (•) for lists.\n\n"
-    "SUBJECT RULES:\n"
-    "- If the user asks for 'Biology' or uses /biology, stay strictly on EGCSE Biology.\n"
-    "- If the user asks for 'Science' or uses /science, stay strictly on EGCSE Physical Science (Physics/Chemistry).\n"
-    "- Always offer a quick 'Check your understanding' question at the end."
+    "You are the 'Ejubukweni High School AI Tutor'. Your goal is to help EGCSE students in Eswatini.\n\n"
+    "FORMATTING RULES:\n"
+    "- ALWAYS use **BOLD TEXT** for headings. Do NOT use # or ###.\n"
+    "- Use bullet points (•) for lists to make them easy to read on mobile.\n"
+    "- For Chemistry: Write formulas simply (e.g., CO2, H2O, O2). Do not use ^ symbols.\n"
+    "- Always encourage the student and use clear, simple English.\n\n"
+    "SUBJECT FOCUS:\n"
+    "- If a student asks for 'Biology' or uses /biology, focus on EGCSE Biology syllabus.\n"
+    "- If a student asks for 'Science' or uses /science, focus on Physical Science (Physics/Chemistry)."
 )
 
 @bot.message_handler(commands=['start', 'help'])
 def send_welcome(message):
-    bot.reply_to(message, "**Sawubona!** I am your Ejubukweni High Study Buddy. 📚\n\n"
-                         "Use the menu or type a topic to start. I'm now optimized for clear reading!")
+    welcome_text = (
+        "**Sawubona!** 📚\n\n"
+        "I am the Ejubukweni High Study Buddy, optimized and ready to help!\n\n"
+        "**Available Commands:**\n"
+        "/biology - Get Biology notes\n"
+        "/science - Get Physical Science notes\n"
+        "/quiz - Test your knowledge\n\n"
+        "What are we studying today?"
+    )
+    bot.reply_to(message, welcome_text, parse_mode='Markdown')
 
 @bot.message_handler(commands=['biology'])
-def bio_command(message):
-    response = model.generate_content(f"{SYSTEM_INSTRUCTION}\n\nStudent wants BIOLOGY notes. Give an overview of the syllabus or ask for a topic.")
+def bio_notes(message):
+    prompt = f"{SYSTEM_INSTRUCTION}\n\nUser wants Biology notes. Give a friendly overview of the EGCSE Biology topics."
+    response = model.generate_content(prompt)
     bot.reply_to(message, response.text, parse_mode='Markdown')
 
 @bot.message_handler(commands=['science'])
-def science_command(message):
-    response = model.generate_content(f"{SYSTEM_INSTRUCTION}\n\nStudent wants PHYSICAL SCIENCE notes. Give an overview of the syllabus or ask for a topic.")
+def science_notes(message):
+    prompt = f"{SYSTEM_INSTRUCTION}\n\nUser wants Physical Science notes. Give a friendly overview of the EGCSE Physical Science topics."
+    response = model.generate_content(prompt)
     bot.reply_to(message, response.text, parse_mode='Markdown')
 
 @bot.message_handler(func=lambda message: True)
-def handle_message(message):
+def handle_all_messages(message):
     try:
-        response = model.generate_content(f"{SYSTEM_INSTRUCTION}\n\nStudent: {message.text}")
-        # We use parse_mode='Markdown' so that **Bold** actually works!
+        # Generate content with the instruction and student's question
+        full_prompt = f"{SYSTEM_INSTRUCTION}\n\nStudent asks: {message.text}"
+        response = model.generate_content(full_prompt)
+        
+        # We try to send with Markdown first for the Bold text to work
         bot.reply_to(message, response.text, parse_mode='Markdown')
     except Exception:
-        # Fallback if Markdown fails (sometimes AI sends bad characters)
+        # If Markdown fails (e.g. if the AI sends a weird character), send as plain text
         bot.reply_to(message, response.text)
 
 @app.route('/' + TOKEN, methods=['POST'])
@@ -64,7 +74,8 @@ def getMessage():
 
 @app.route("/")
 def index():
-    return "<h1>Ejubukweni Bot: Formatting Updated!</h1>", 200
+    return "<h1>Ejubukweni Bot is Active & Awake!</h1>", 200
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get('PORT', 5000)))
+
