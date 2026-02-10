@@ -2,6 +2,7 @@ import os
 import telebot
 import google.generativeai as genai
 from flask import Flask, request
+import requests  # Added for webhook setup
 
 # 1. SETUP
 TOKEN = os.getenv("TELEGRAM_TOKEN")
@@ -20,6 +21,29 @@ SYSTEM_INSTRUCTION = (
     "Use **BOLD** for headers and • for lists. Be concise to ensure speed."
 )
 
+# Force set webhook on startup (runs every deploy/restart)
+def set_webhook():
+    hostname = os.environ.get('RENDER_EXTERNAL_HOSTNAME')
+    if not hostname:
+        print("WARNING: RENDER_EXTERNAL_HOSTNAME not set! Webhook may fail.")
+        return
+    
+    webhook_url = f"https://{hostname}/{TOKEN}"
+    try:
+        response = requests.get(
+            f"https://api.telegram.org/bot{TOKEN}/setWebhook?url={webhook_url}"
+        )
+        print("Set webhook response:", response.text)
+        
+        # Also print current webhook info for debugging
+        info_response = requests.get(f"https://api.telegram.org/bot{TOKEN}/getWebhookInfo")
+        print("Current webhook info:", info_response.text)
+        
+    except Exception as e:
+        print("Webhook set failed:", str(e))
+
+set_webhook()  # Call it immediately after app creation
+
 @bot.message_handler(commands=['start', 'help'])
 def send_welcome(message):
     bot.reply_to(message, "**Sawubona!** I am awake. Ask me any Biology or Science question!", parse_mode='Markdown')
@@ -27,6 +51,9 @@ def send_welcome(message):
 @bot.message_handler(func=lambda message: True)
 def handle_message(message):
     try:
+        # Log incoming message for debugging
+        print(f"Received message: {message.text} from user {message.from_user.id}")
+        
         # 1. Show typing
         bot.send_chat_action(message.chat.id, 'typing')
         
@@ -43,7 +70,7 @@ def handle_message(message):
             bot.reply_to(message, "I couldn't generate text. Please rephrase your question.")
 
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"Error processing message: {e}")
         # If Markdown fails, send as plain text
         try:
             bot.send_message(message.chat.id, "Here are your notes (plain text):")
@@ -64,4 +91,3 @@ def index():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get('PORT', 5000)))
-
